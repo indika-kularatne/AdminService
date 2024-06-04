@@ -1,0 +1,98 @@
+pipeline {
+  parameters {
+    string(name: 'SERVICE_NAME', defaultValue: 'marz-adminservice')
+    string(name: 'NAMESPACE', defaultValue: 'default')
+    string(name: 'IMAGE_URL', defaultValue: 'swr.my-kualalumpur-1.alphaedge.tmone.com.my/tune-protect/marz-adminservice')
+    string(name: 'CLUSTER_NAME', defaultValue: 'marz-cluster-uat')
+    string(name: 'DB_IP', defaultValue: '172.16.0.123')
+  }
+
+  agent {
+    kubernetes {
+      cloud "${params.CLUSTER_NAME}"
+      yamlFile "jenkins-build-pod.uat.yaml"
+    }
+  }
+
+  environment {
+    CLOUDALPHA_JENKINS_ACCESS_KEY     = credentials('cloudalpha-jenkins-access-key')
+    CLOUDALPHA_JENKINS_SWR_LOGIN_KEY  = credentials('cloudalpha-jenkins-swr-login-key')
+    DB_PASSWORD                       = credentials('marz-db-password-uat')
+  }
+
+  stages {        
+    stage('Initialize') {
+      steps {
+        script {
+          IMAGE="${params.IMAGE_URL}:${GIT_COMMIT}"
+        }
+      }                
+    }
+
+    stage("Build") {
+      steps {
+        dir("AdminService") {
+          container("docker") {
+            script {
+              regcred = load "../registry.groovy"
+              regcred.dockerRegistryLogin()
+            }
+            sh "docker build -t ${IMAGE} ."
+            sh "docker push ${IMAGE}"
+          }
+        }
+      }
+    }
+
+    stage("Deploy") {
+      steps {
+        container("kubectl") {
+          script {
+            regcred = load "registry.groovy"
+            regcred.kubectlRegistryLogin()
+          }
+          sh """cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${params.SERVICE_NAME}
+  namespace: ${params.NAMESPACE}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ${params.SERVICE_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${params.SERVICE_NAME}
+    spec:
+      containers:
+      - name: ${params.SERVICE_NAME}
+        image: ${IMAGE}
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          value: "Server=${params.DB_IP};Port=5432;Database=marz;User Id=marz;Password=$DB_PASSWORD"
+      imagePullSecrets:
+      - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${params.SERVICE_NAME}
+spec:
+  selector:
+    app: ${params.SERVICE_NAME}
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 80
+  type: NodePort
+EOF
+"""
+          sh "kubectl rollout status deployments/${params.SERVICE_NAME}"
+        }
+      }
+    }
+  }
+}

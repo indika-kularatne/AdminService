@@ -21,9 +21,9 @@ jobs:
       run: |
         pwd
         ls
-        dotnet restore AirportService.sln
+        dotnet restore AdminService.sln
       #working-directory: marz-services
       
     - name: Build the Project
-      run: dotnet build AirportService.sln -c Release
+      run: dotnet build AdminService.sln -c Release
       

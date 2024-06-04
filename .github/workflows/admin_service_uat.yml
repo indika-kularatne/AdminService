@@ -1,0 +1,29 @@
+name: admin_service_uat
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # This allows the workflow to be triggered manually
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: 6.0.x
+    - name: Restore dependencies
+      run: |
+        pwd
+        ls
+        dotnet restore AirportService.sln
+      #working-directory: marz-services
+      
+    - name: Build the Project
+      run: dotnet build AirportService.sln -c Release
+      
